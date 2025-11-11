@@ -1,158 +1,146 @@
 package com.serial.liveocr;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.util.Size;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import androidx.annotation.OptIn;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.*;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
-
-import com.google.common.util.concurrent.ListenableFuture;
+import com.google.android.gms.tasks.Task;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.Text;
 import com.google.mlkit.vision.text.TextRecognition;
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
-
-import android.content.Intent;
-
-import org.json.JSONObject;
-
+import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 public class OCRActivity extends AppCompatActivity {
+
     private PreviewView previewView;
     private ExecutorService cameraExecutor;
-    private com.google.mlkit.vision.text.TextRecognizer recognizer;
+    private Pattern accept;
+    private int minStable, stableCount = 0;
+    private String lastAccepted = "";
+    private float boxPct;
 
-    // Simple stabilizer
-    private String last = "";
-    private int stableCount = 0;
-    private String regex = "^[A-Za-z0-9\\-]{6,}$";
-    private int minStable = 3;
-    private float boxPercent = 0.33f; // center box
+    private final ActivityResultLauncher<String> permissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                if (granted) startCamera();
+                else finish(); // no permission
+            });
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
+    protected void onCreate(Bundle savedInstance) {
+        super.onCreate(savedInstance);
         previewView = new PreviewView(this);
         previewView.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(previewView);
 
-        try {
-            String opt = getIntent().getStringExtra("options");
-            if (opt != null) {
-                JSONObject o = new JSONObject(opt);
-                if (o.has("regex")) regex = o.getString("regex");
-                if (o.has("minStableFrames")) minStable = o.getInt("minStableFrames");
-                if (o.has("boxPercent")) boxPercent = (float) o.getDouble("boxPercent");
-            }
-        } catch (Exception ignored) {}
+        String regex = getIntent().getStringExtra("regex");
+        if (regex == null || regex.isEmpty()) regex = "^[A-Za-z0-9\\-]{6,}$";
+        accept = Pattern.compile(regex);
+        minStable = getIntent().getIntExtra("minStable", 3);
+        boxPct = getIntent().getFloatExtra("boxPct", 0.33f);
 
-        recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
         cameraExecutor = Executors.newSingleThreadExecutor();
-        startCamera();
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            startCamera();
+        } else {
+            permissionLauncher.launch(Manifest.permission.CAMERA);
+        }
     }
 
     private void startCamera() {
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
-                ProcessCameraProvider.getInstance(this);
+        ProcessCameraProvider.getInstance(this)
+                .addListener(() -> {
+                    try {
+                        ProcessCameraProvider provider = ProcessCameraProvider.getInstance(this).get();
+                        provider.unbindAll();
 
-        cameraProviderFuture.addListener(() -> {
-            try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
+                        Preview preview = new Preview.Builder().build();
+                        preview.setSurfaceProvider(previewView.getSurfaceProvider());
 
-                Preview preview = new Preview.Builder().build();
-                preview.setSurfaceProvider(previewView.getSurfaceProvider());
+                        ImageAnalysis analysis = new ImageAnalysis.Builder()
+                                .setTargetResolution(new Size(1280, 720))
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build();
 
-                ImageAnalysis analysis = new ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .setTargetResolution(new Size(1280, 720))
-                        .build();
+                        analysis.setAnalyzer(cameraExecutor, this::analyze);
 
-                analysis.setAnalyzer(cameraExecutor, imageProxy -> {
-                    @OptIn(markerClass = ExperimentalGetImage.class)
-                    ImageProxy proxy = imageProxy;
-                    if (proxy.getImage() == null) {
-                        proxy.close();
-                        return;
+                        provider.bindToLifecycle(this,
+                                CameraSelector.DEFAULT_BACK_CAMERA,
+                                preview, analysis);
+                    } catch (Exception e) {
+                        finish();
                     }
-                    InputImage image = InputImage.fromMediaImage(
-                            proxy.getImage(), proxy.getImageInfo().getRotationDegrees());
-
-                    recognizer.process(image)
-                            .addOnSuccessListener(result -> {
-                                String best = pickFromCenter(result);
-                                handleCandidate(best);
-                                proxy.close();
-                            })
-                            .addOnFailureListener(e -> proxy.close());
-                });
-
-                CameraSelector selector = CameraSelector.DEFAULT_BACK_CAMERA;
-                cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(this, selector, preview, analysis);
-            } catch (Exception ignored) {}
-        }, ContextCompat.getMainExecutor(this));
+                }, ContextCompat.getMainExecutor(this));
     }
 
-    private String pickFromCenter(Text result) {
-        if (result == null) return "";
-        int w = previewView.getWidth();
-        int h = previewView.getHeight();
-        if (w == 0 || h == 0) return "";
-
-        int bw = (int)(w * boxPercent);
-        int bh = (int)(h * boxPercent);
-        Rect box = new Rect((w - bw)/2, (h - bh)/2, (w + bw)/2, (h + bh)/2);
-
-        String best = "";
-        for (Text.TextBlock b : result.getTextBlocks()) {
-            for (Text.Line line : b.getLines()) {
-                Rect r = line.getBoundingBox();
-                if (r != null && Rect.intersects(r, box)) {
-                    String t = line.getText().trim();
-                    if (t.length() > best.length()) best = t;
-                }
+    private void analyze(@NonNull ImageProxy proxy) {
+        try {
+            ImageProxy.PlaneProxy[] planes = proxy.getPlanes();
+            if (planes == null || proxy.getImage() == null) {
+                proxy.close(); return;
             }
-        }
-        return best.replaceAll("\\s", "");
-    }
+            InputImage img = InputImage.fromMediaImage(proxy.getImage(), proxy.getImageInfo().getRotationDegrees());
 
-    private void handleCandidate(String candidate) {
-        if (candidate == null) candidate = "";
-        if (!candidate.matches(regex)) {
-            last = "";
-            stableCount = 0;
-            return;
-        }
-        if (candidate.equals(last)) {
-            stableCount++;
-        } else {
-            last = candidate;
-            stableCount = 1;
-        }
-        if (stableCount >= minStable) {
-            Intent data = new Intent();
-            data.putExtra("text", candidate);
-            data.putExtra("stable", stableCount);
-            setResult(RESULT_OK, data);
-            finish();
+            Task<Text> task = TextRecognition.getClient().process(img);
+            task.addOnSuccessListener(text -> {
+                // center crop box
+                int w = proxy.getWidth(), h = proxy.getHeight();
+                int boxW = Math.round(w * boxPct), boxH = Math.round(h * boxPct);
+                Rect box = new Rect((w - boxW)/2, (h - boxH)/2, (w + boxW)/2, (h + boxH)/2);
+
+                String best = null;
+                for (Text.TextBlock b : text.getTextBlocks()) {
+                    Rect r = b.getBoundingBox();
+                    if (r != null && box.contains(r)) {
+                        String cand = b.getText().replaceAll("\\s", "");
+                        if (accept.matcher(cand).matches()) { best = cand; break; }
+                    }
+                }
+
+                if (best != null) {
+                    if (best.equals(lastAccepted)) {
+                        stableCount++;
+                    } else {
+                        lastAccepted = best;
+                        stableCount = 1;
+                    }
+                    if (stableCount >= minStable) {
+                        Intent out = new Intent();
+                        out.putExtra("text", best);
+                        out.putExtra("stable", stableCount);
+                        setResult(RESULT_OK, out);
+                        finish();
+                    }
+                }
+                proxy.close();
+            }).addOnFailureListener(e -> {
+                proxy.close();
+            });
+        } catch (Exception e) {
+            proxy.close();
         }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (recognizer != null) recognizer.close();
         if (cameraExecutor != null) cameraExecutor.shutdown();
     }
 }
-
