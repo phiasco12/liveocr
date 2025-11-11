@@ -1,12 +1,10 @@
 {
   "name": "cordova-plugin-live-ocr",
   "version": "1.0.0",
-  "description": "Live on-device OCR (single-line, stabilized) using CameraX + ML Kit for Cordova (Android).",
+  "description": "Live OCR (serial number) scanner using CameraX + ML Kit",
   "cordova": {
-    "id": "com.serial.liveocr",
-    "platforms": [
-      "android"
-    ]
+    "id": "cordova-plugin-live-ocr",
+    "platforms": ["android"]
   },
   "repository": {
     "type": "git",
@@ -18,8 +16,7 @@
     "plugin",
     "ocr",
     "mlkit",
-    "camerax",
-    "text-recognition",
+    "cameraX",
     "live"
   ],
   "author": "Rooz Farhadi",
@@ -29,4 +26,5 @@
   },
   "homepage": "https://github.com/phiasco12/cordova-plugin-live-ocr#readme"
 }
+
 
