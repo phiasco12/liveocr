@@ -1,9 +1,12 @@
 var exec = require('cordova/exec');
 
-exports.start = function (opts, success, error) {
-  exec(success, error, 'LiveOCR', 'start', [opts || {}]);
+var LiveOCR = {
+  start: function (success, error) {
+    exec(success, error, 'LiveOCR', 'start', []);
+  },
+  stop: function (success, error) {
+    exec(success, error, 'LiveOCR', 'stop', []);
+  }
 };
 
-exports.stop = function (success, error) {
-  exec(success, error, 'LiveOCR', 'stop', []);
-};
+module.exports = LiveOCR;
