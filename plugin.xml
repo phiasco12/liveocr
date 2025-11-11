@@ -1,52 +1,31 @@
-<?xml version="1.0" encoding="utf-8"?>
-<plugin id="cordova-plugin-live-ocr" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        id="cordova-plugin-liveocr"
+        version="1.0.0">
 
   <name>LiveOCR</name>
+  <description>Live camera serial/text recognition plugin (lightweight, offline)</description>
+  <license>Apache 2.0</license>
+  <keywords>cordova, plugin, camera, ocr, serial, text</keywords>
 
-  <js-module name="LiveOCR" src="www/LiveOCR.js">
+  <!-- JS Bridge -->
+  <js-module src="www/LiveOCR.js" name="LiveOCR">
     <clobbers target="LiveOCR" />
   </js-module>
 
+  <!-- Android -->
   <platform name="android">
-    <!-- Activity -->
-    <config-file target="AndroidManifest.xml" parent="/manifest/application">
-      <activity
-        android:name="com.serial.liveocr.OCRActivity"
-        android:exported="false"
-        android:theme="@style/LiveOCRTheme"
-        android:screenOrientation="portrait" />
-    </config-file>
-
-    <!-- Feature hook for exec bridge -->
-    <config-file target="res/xml/config.xml" parent="/*">
-      <feature name="LiveOCR">
-        <param name="android-package" value="com.serial.liveocr.LiveOCR" />
-      </feature>
-    </config-file>
-
-    <!-- Permissions / features -->
     <config-file target="AndroidManifest.xml" parent="/manifest">
       <uses-permission android:name="android.permission.CAMERA" />
-      <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     </config-file>
 
-    <!-- Maven deps -->
-    <framework src="androidx.appcompat:appcompat:1.7.0" />
-    <framework src="androidx.activity:activity:1.9.2" />
-    <framework src="androidx.lifecycle:lifecycle-runtime:2.8.6" />
-    <framework src="androidx.camera:camera-core:1.3.4" />
-    <framework src="androidx.camera:camera-camera2:1.3.4" />
-    <framework src="androidx.camera:camera-lifecycle:1.3.4" />
-    <framework src="androidx.camera:camera-view:1.3.4" />
-    <!-- Use PLAY-SERVICES variant to avoid bundling native .so into your app -->
-    <framework src="com.google.android.gms:play-services-mlkit-text-recognition:19.0.1" />
+    <source-file src="src/android/LiveOCR.java"
+                 target-dir="src/com/phiasco/liveocr" />
 
-    <!-- Java -->
-    <source-file src="src/android/LiveOCR.java" target-dir="app/src/main/java/com/serial/liveocr" />
-    <source-file src="src/android/OCRActivity.java" target-dir="app/src/main/java/com/serial/liveocr" />
-
-    <!-- Resources -->
-    <resource-file src="src/android/res/layout/activity_ocr.xml" target="app/src/main/res/layout/activity_ocr.xml" />
-    <resource-file src="src/android/res/values/styles.xml" target="app/src/main/res/values/styles.xml" />
+    <framework src="androidx.camera:camera-core:1.3.0" />
+    <framework src="androidx.camera:camera-camera2:1.3.0" />
+    <framework src="androidx.camera:camera-lifecycle:1.3.0" />
+    <framework src="androidx.camera:camera-view:1.3.0" />
   </platform>
+
 </plugin>
