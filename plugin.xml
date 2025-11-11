@@ -1,0 +1,17 @@
+<plugin id="com.serial.liveocr" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+  <name>LiveOCR</name>
+
+  <platform name="android">
+    <source-file src="src/android/LiveOCR.java" target-dir="app/src/main/java/com/serial/liveocr" />
+
+    <framework src="com.google.mlkit:text-recognition:16.0.0" />
+    <framework src="androidx.camera:camera-core:1.3.1" />
+    <framework src="androidx.camera:camera-camera2:1.3.1" />
+    <framework src="androidx.camera:camera-lifecycle:1.3.1" />
+    <framework src="androidx.camera:camera-view:1.3.1" />
+  </platform>
+
+  <js-module src="www/liveocr.js" name="LiveOCR">
+    <clobbers target="LiveOCR"/>
+  </js-module>
+</plugin>
