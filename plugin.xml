@@ -1,16 +1,27 @@
-<platform name="android">
-  <config-file target="AndroidManifest.xml" parent="/manifest">
-    <uses-permission android:name="android.permission.CAMERA" />
-  </config-file>
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin id="cordova-plugin-stablecamera" version="1.0.0"
+        xmlns="http://apache.org/cordova/ns/plugins"
+        xmlns:android="http://schemas.android.com/apk/res/android">
+  <name>StableCamera</name>
 
-  <config-file target="AndroidManifest.xml" parent="/manifest/application">
-    <activity
-      android:name="CameraActivity"
-      android:exported="true"
-      android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
-      android:screenOrientation="portrait" />
-  </config-file>
+  <js-module src="www/stablecamera.js" name="StableCamera">
+    <clobbers target="StableCamera"/>
+  </js-module>
 
-  <source-file src="src/android/StableCamera.java" target-dir="src" />
-  <source-file src="src/android/CameraActivity.java" target-dir="src" />
-</platform>
+  <platform name="android">
+    <config-file target="AndroidManifest.xml" parent="/manifest">
+      <uses-permission android:name="android.permission.CAMERA" />
+    </config-file>
+
+    <config-file target="AndroidManifest.xml" parent="/manifest/application">
+      <activity
+        android:name="CameraActivity"
+        android:exported="true"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+        android:screenOrientation="portrait" />
+    </config-file>
+
+    <source-file src="src/android/StableCamera.java" target-dir="src" />
+    <source-file src="src/android/CameraActivity.java" target-dir="src" />
+  </platform>
+</plugin>
