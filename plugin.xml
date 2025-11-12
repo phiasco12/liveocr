@@ -13,4 +13,3 @@
     <source-file src="src/android/CameraActivity.java" target-dir="src/com/example/stablecamera" />
   </platform>
 </plugin>
-
