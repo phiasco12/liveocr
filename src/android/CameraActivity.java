@@ -1,4 +1,4 @@
-    package com.example.stablecamera;
+package com.example.stablecamera;
 
 import android.Manifest;
 import android.app.Activity;
@@ -7,6 +7,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.hardware.Camera;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Base64;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -21,6 +22,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
     private SurfaceView surfaceView;
     private boolean pictureTaken = false;
     private boolean finishing = false;
+    private final Handler handler = new Handler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,7 +63,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
             camera = Camera.open();
             Camera.Parameters params = camera.getParameters();
 
-            // Use highest supported picture resolution
+            // Highest supported picture size
             Camera.Size best = null;
             for (Camera.Size s : params.getSupportedPictureSizes()) {
                 if (best == null || (s.width * s.height > best.width * best.height)) {
@@ -70,14 +72,19 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
             }
             if (best != null) params.setPictureSize(best.width, best.height);
 
-            params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+            if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
+                params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
+            } else if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_AUTO)) {
+                params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+            }
+
             camera.setParameters(params);
             camera.setDisplayOrientation(90);
             camera.setPreviewDisplay(holder);
             camera.startPreview();
 
-            // Give autofocus time to settle, then take picture
-            holder.getSurface().postDelayed(this::autoFocusAndCapture, 1000);
+            // Delay autofocus and capture slightly
+            handler.postDelayed(this::autoFocusAndCapture, 1000);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -88,13 +95,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
     private void autoFocusAndCapture() {
         if (camera == null || pictureTaken) return;
         try {
-            camera.autoFocus((success, cam) -> {
-                if (success) takePicture();
-                else {
-                    // retry once
-                    cam.autoFocus((s, c) -> takePicture());
-                }
-            });
+            camera.autoFocus((success, cam) -> takePicture());
         } catch (Exception e) {
             takePicture();
         }
@@ -116,7 +117,6 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     private String encodeToBase64(byte[] jpegData) {
-        // Optional: resize or compress if too large
         Bitmap bmp = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.length);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         bmp.compress(Bitmap.CompressFormat.JPEG, 95, baos);
