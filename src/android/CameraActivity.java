@@ -24,15 +24,18 @@ import androidx.core.content.ContextCompat;
 
 import java.io.ByteArrayOutputStream;
 
-public class CameraActivity extends Activity implements SurfaceHolder.Callback {
+public class CameraActivity extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback {
 
     private static final int REQUEST_CAMERA = 1001;
     private Camera camera;
     private SurfaceView surfaceView;
     private OverlayView overlayView;
-    private boolean pictureTaken = false;
     private boolean finishing = false;
+    private boolean pictureTaken = false;
     private final Handler handler = new Handler();
+
+    private long stableStart = 0;
+    private double lastFrameDiff = 9999;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,26 +59,11 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CAMERA) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startCamera(surfaceView.getHolder());
-            } else {
-                finishSafe();
-            }
-        }
-    }
-
-    @Override
     public void surfaceCreated(SurfaceHolder holder) {
         startCamera(holder);
     }
 
     private void startCamera(SurfaceHolder holder) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                != PackageManager.PERMISSION_GRANTED) return;
-
         try {
             camera = Camera.open();
             Camera.Parameters params = camera.getParameters();
@@ -100,10 +88,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
             camera.setParameters(params);
             camera.setDisplayOrientation(90);
             camera.setPreviewDisplay(holder);
+            camera.setPreviewCallback(this);
             camera.startPreview();
-
-            // Wait for focus and exposure to settle
-            handler.postDelayed(this::captureAfterFocus, 2500);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -111,13 +97,38 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
 
-    private void captureAfterFocus() {
-        if (camera == null || pictureTaken) return;
-        try {
-            camera.autoFocus((success, cam) -> handler.postDelayed(this::takePicture, 400));
-        } catch (Exception e) {
-            takePicture();
+    @Override
+    public void onPreviewFrame(byte[] data, Camera camera) {
+        if (pictureTaken) return;
+
+        Camera.Size size = camera.getParameters().getPreviewSize();
+        if (size == null || data == null) return;
+
+        double diff = calculateFrameDiff(data);
+
+        long now = System.currentTimeMillis();
+        if (diff < 1.5) { // scene stable
+            if (stableStart == 0) stableStart = now;
+            if (now - stableStart > 1200) { // stable for >1.2s
+                takePicture();
+            }
+        } else {
+            stableStart = 0;
         }
+
+        lastFrameDiff = diff;
+    }
+
+    private double calculateFrameDiff(byte[] frameData) {
+        // Quick frame diff based on random samples
+        int step = 1000;
+        long sum = 0;
+        for (int i = 0; i < frameData.length; i += step) {
+            sum += frameData[i] & 0xFF;
+        }
+        double avg = (double) sum / (frameData.length / step);
+        double diff = Math.abs(avg - lastFrameDiff);
+        return diff;
     }
 
     private void takePicture() {
@@ -207,15 +218,15 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
             int right = left + rectW;
             int bottom = top + rectH;
 
-            // Darken the whole screen
+            // Darken screen
             canvas.drawRect(0, 0, w, h, paint);
 
-            // Clear center rectangle
+            // Clear center area
             Paint clearPaint = new Paint();
             clearPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
             canvas.drawRect(left, top, right, bottom, clearPaint);
 
-            // Draw white border around transparent area
+            // White border
             Paint border = new Paint();
             border.setColor(Color.WHITE);
             border.setStrokeWidth(4);
