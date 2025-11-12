@@ -6,6 +6,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.hardware.Camera;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Base64;
 import android.view.SurfaceHolder;
@@ -23,6 +24,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
     private SurfaceView surfaceView;
     private Queue<Bitmap> frameQueue = new LinkedList<>();
     private final int FRAME_LIMIT = 15;
+    private boolean finishing = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,7 +47,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startCamera(surfaceView.getHolder());
             } else {
-                finish();
+                finishSafe();
             }
         }
     }
@@ -66,23 +68,35 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
             camera.startPreview();
         } catch (Exception e) {
             e.printStackTrace();
-            finish();
+            finishSafe();
         }
     }
 
     @Override
     public void onPreviewFrame(byte[] data, Camera camera) {
-        Bitmap bmp = decodeToBitmap(data);
-        if (bmp == null) return;
+        // decode frames off the UI thread
+        new FrameTask().execute(data);
+    }
 
-        if (frameQueue.size() >= FRAME_LIMIT) frameQueue.poll();
-        frameQueue.add(bmp);
+    private class FrameTask extends AsyncTask<byte[], Void, Bitmap> {
+        @Override
+        protected Bitmap doInBackground(byte[]... params) {
+            return decodeToBitmap(params[0]);
+        }
 
-        if (frameQueue.size() == FRAME_LIMIT && isStable()) {
-            Bitmap lastFrame = frameQueue.peek();
-            String base64 = encodeToBase64(lastFrame);
-            StableCamera.sendResult(base64);
-            finish();
+        @Override
+        protected void onPostExecute(Bitmap bmp) {
+            if (bmp == null || finishing) return;
+
+            if (frameQueue.size() >= FRAME_LIMIT) frameQueue.poll();
+            frameQueue.add(bmp);
+
+            if (frameQueue.size() == FRAME_LIMIT && isStable()) {
+                Bitmap lastFrame = frameQueue.peek();
+                String base64 = encodeToBase64(lastFrame);
+                StableCamera.sendResult(base64);
+                finishSafe();
+            }
         }
     }
 
@@ -134,14 +148,27 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
         return Base64.encodeToString(imageBytes, Base64.NO_WRAP);
     }
 
+    private synchronized void finishSafe() {
+        if (finishing) return;
+        finishing = true;
+
+        runOnUiThread(() -> {
+            try {
+                if (camera != null) {
+                    camera.setPreviewCallback(null);
+                    camera.stopPreview();
+                    camera.release();
+                    camera = null;
+                }
+            } catch (Exception ignored) {}
+            finish();
+        });
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
-        if (camera != null) {
-            camera.stopPreview();
-            camera.release();
-            camera = null;
-        }
+        finishSafe();
     }
 
     @Override public void surfaceChanged(SurfaceHolder h, int f, int w, int he) {}
