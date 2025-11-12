@@ -1,4 +1,4 @@
-package com.example.stablecamera;
+//package com.example.stablecamera;
 
 import android.app.Activity;
 import android.os.Bundle;
