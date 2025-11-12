@@ -1,31 +1,16 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
-        id="cordova-plugin-liveocr"
-        version="1.0.0">
-
-  <name>LiveOCR</name>
-  <description>Live camera serial/text recognition plugin (lightweight, offline)</description>
-  <license>Apache 2.0</license>
-  <keywords>cordova, plugin, camera, ocr, serial, text</keywords>
-
-  <!-- JS Bridge -->
-  <js-module src="www/LiveOCR.js" name="LiveOCR">
-    <clobbers target="LiveOCR" />
+<plugin id="cordova-plugin-stablecamera" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins">
+  <name>StableCamera</name>
+  <js-module src="www/stablecamera.js" name="StableCamera">
+    <clobbers target="StableCamera"/>
   </js-module>
 
-  <!-- Android -->
   <platform name="android">
     <config-file target="AndroidManifest.xml" parent="/manifest">
       <uses-permission android:name="android.permission.CAMERA" />
     </config-file>
 
-    <source-file src="src/android/LiveOCR.java"
-                 target-dir="src/com/phiasco/liveocr" />
-
-    <framework src="androidx.camera:camera-core:1.3.0" />
-    <framework src="androidx.camera:camera-camera2:1.3.0" />
-    <framework src="androidx.camera:camera-lifecycle:1.3.0" />
-    <framework src="androidx.camera:camera-view:1.3.0" />
+    <source-file src="src/android/StableCamera.java" target-dir="src/com/example/stablecamera" />
+    <source-file src="src/android/CameraActivity.java" target-dir="src/com/example/stablecamera" />
   </platform>
-
 </plugin>
+
