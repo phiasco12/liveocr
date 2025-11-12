@@ -1,4 +1,4 @@
-package com.example.stablecamera;
+//package com.example.stablecamera;
 
 import org.apache.cordova.*;
 import org.json.JSONArray;
