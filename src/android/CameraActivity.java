@@ -2,11 +2,13 @@ package com.example.stablecamera;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
@@ -14,9 +16,11 @@ import android.hardware.Camera;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Base64;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.FrameLayout;
 
 import androidx.core.app.ActivityCompat;
@@ -27,6 +31,11 @@ import java.io.ByteArrayOutputStream;
 public class CameraActivity extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback {
 
     private static final int REQUEST_CAMERA = 1001;
+
+    // --- adjustable stillness settings ---
+    private static final double STABILITY_THRESHOLD = 2.0; // lower = more sensitive to movement
+    private static final long STABLE_HOLD_MS = 800;        // how long to hold still before capture
+
     private Camera camera;
     private SurfaceView surfaceView;
     private OverlayView overlayView;
@@ -77,7 +86,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
             }
             if (best != null) params.setPictureSize(best.width, best.height);
 
-            // Continuous focus for clarity
+            // Continuous focus
             if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
                 params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             } else if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_AUTO)) {
@@ -101,7 +110,6 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
     public void onPreviewFrame(byte[] data, Camera camera) {
         if (pictureTaken) return;
 
-        // Quick motion detection using average brightness
         double avg = computeBrightness(data);
         if (lastFrameAvg < 0) {
             lastFrameAvg = avg;
@@ -111,20 +119,19 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
         double diff = Math.abs(avg - lastFrameAvg);
         long now = System.currentTimeMillis();
 
-        if (diff < 2.0) { // stable enough
+        if (diff < STABILITY_THRESHOLD) {
             if (stableSince == 0) stableSince = now;
-            if (now - stableSince > 800) { // held still ~0.8 sec
+            if (now - stableSince > STABLE_HOLD_MS) {
                 takePicture();
             }
         } else {
-            stableSince = 0; // reset stability timer
+            stableSince = 0;
         }
 
         lastFrameAvg = avg;
     }
 
     private double computeBrightness(byte[] frame) {
-        // sample brightness from Y data (NV21 format)
         int step = 1000;
         long total = 0;
         int count = 0;
@@ -140,7 +147,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
         pictureTaken = true;
         try {
             camera.takePicture(null, null, (data, cam) -> {
-                String base64 = encodeToBase64(data);
+                String base64 = encodeToBase64(data, cam);
                 StableCamera.sendResult(base64);
                 finishSafe();
             });
@@ -150,16 +157,23 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
         }
     }
 
-    private String encodeToBase64(byte[] jpegData) {
+    // --- rotation + crop ---
+    private String encodeToBase64(byte[] jpegData, Camera camera) {
         Bitmap bmp = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.length);
         if (bmp == null) return "";
+
+        int rotation = getRotationCompensation(camera);
+        if (rotation != 0) {
+            Matrix matrix = new Matrix();
+            matrix.postRotate(rotation);
+            bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), matrix, true);
+        }
 
         // Crop center area (same ratio as overlay)
         int cropWidth = (int) (bmp.getWidth() * 0.6);
         int cropHeight = (int) (bmp.getHeight() * 0.4);
         int left = (bmp.getWidth() - cropWidth) / 2;
         int top = (bmp.getHeight() - cropHeight) / 2;
-
         Bitmap cropped = Bitmap.createBitmap(bmp, left, top, cropWidth, cropHeight);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -170,6 +184,31 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
         cropped.recycle();
 
         return Base64.encodeToString(bytes, Base64.NO_WRAP);
+    }
+
+    private int getRotationCompensation(Camera camera) {
+        int rotation = ((WindowManager) getSystemService(Context.WINDOW_SERVICE))
+                .getDefaultDisplay().getRotation();
+
+        int degrees = 0;
+        switch (rotation) {
+            case Surface.ROTATION_0: degrees = 0; break;
+            case Surface.ROTATION_90: degrees = 90; break;
+            case Surface.ROTATION_180: degrees = 180; break;
+            case Surface.ROTATION_270: degrees = 270; break;
+        }
+
+        Camera.CameraInfo info = new Camera.CameraInfo();
+        Camera.getCameraInfo(Camera.CameraInfo.CAMERA_FACING_BACK, info);
+
+        int result;
+        if (info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+            result = (info.orientation + degrees) % 360;
+            result = (360 - result) % 360;
+        } else {
+            result = (info.orientation - degrees + 360) % 360;
+        }
+        return result;
     }
 
     private synchronized void finishSafe() {
