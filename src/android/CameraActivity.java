@@ -1,19 +1,24 @@
-//package com.example.stablecamera;
+package com.example.stablecamera;
 
+import android.Manifest;
 import android.app.Activity;
-import android.os.Bundle;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
-import android.hardware.Camera;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.hardware.Camera;
+import android.os.Bundle;
 import android.util.Base64;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import java.io.ByteArrayOutputStream;
 import java.util.LinkedList;
 import java.util.Queue;
 
 public class CameraActivity extends Activity implements SurfaceHolder.Callback, Camera.PreviewCallback {
 
+    private static final int REQUEST_CAMERA = 1001;
     private Camera camera;
     private SurfaceView surfaceView;
     private Queue<Bitmap> frameQueue = new LinkedList<>();
@@ -25,17 +30,43 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
         surfaceView = new SurfaceView(this);
         setContentView(surfaceView);
         surfaceView.getHolder().addCallback(this);
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CAMERA) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCamera(surfaceView.getHolder());
+            } else {
+                finish();
+            }
+        }
     }
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        camera = Camera.open();
+        startCamera(holder);
+    }
+
+    private void startCamera(SurfaceHolder holder) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) return;
         try {
+            camera = Camera.open();
+            camera.setDisplayOrientation(90);
             camera.setPreviewDisplay(holder);
             camera.setPreviewCallback(this);
             camera.startPreview();
         } catch (Exception e) {
             e.printStackTrace();
+            finish();
         }
     }
 
