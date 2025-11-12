@@ -30,12 +30,12 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
     private Camera camera;
     private SurfaceView surfaceView;
     private OverlayView overlayView;
-    private boolean finishing = false;
     private boolean pictureTaken = false;
+    private boolean finishing = false;
     private final Handler handler = new Handler();
 
-    private long stableStart = 0;
-    private double lastFrameDiff = 9999;
+    private double lastFrameAvg = -1;
+    private long stableSince = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,7 +68,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
             camera = Camera.open();
             Camera.Parameters params = camera.getParameters();
 
-            // Highest supported picture size
+            // Highest available picture size
             Camera.Size best = null;
             for (Camera.Size s : params.getSupportedPictureSizes()) {
                 if (best == null || (s.width * s.height > best.width * best.height)) {
@@ -77,7 +77,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
             }
             if (best != null) params.setPictureSize(best.width, best.height);
 
-            // Continuous focus for sharper captures
+            // Continuous focus for clarity
             if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
                 params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             } else if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_AUTO)) {
@@ -101,34 +101,38 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
     public void onPreviewFrame(byte[] data, Camera camera) {
         if (pictureTaken) return;
 
-        Camera.Size size = camera.getParameters().getPreviewSize();
-        if (size == null || data == null) return;
+        // Quick motion detection using average brightness
+        double avg = computeBrightness(data);
+        if (lastFrameAvg < 0) {
+            lastFrameAvg = avg;
+            return;
+        }
 
-        double diff = calculateFrameDiff(data);
-
+        double diff = Math.abs(avg - lastFrameAvg);
         long now = System.currentTimeMillis();
-        if (diff < 1.5) { // scene stable
-            if (stableStart == 0) stableStart = now;
-            if (now - stableStart > 1200) { // stable for >1.2s
+
+        if (diff < 2.0) { // stable enough
+            if (stableSince == 0) stableSince = now;
+            if (now - stableSince > 800) { // held still ~0.8 sec
                 takePicture();
             }
         } else {
-            stableStart = 0;
+            stableSince = 0; // reset stability timer
         }
 
-        lastFrameDiff = diff;
+        lastFrameAvg = avg;
     }
 
-    private double calculateFrameDiff(byte[] frameData) {
-        // Quick frame diff based on random samples
+    private double computeBrightness(byte[] frame) {
+        // sample brightness from Y data (NV21 format)
         int step = 1000;
-        long sum = 0;
-        for (int i = 0; i < frameData.length; i += step) {
-            sum += frameData[i] & 0xFF;
+        long total = 0;
+        int count = 0;
+        for (int i = 0; i < frame.length; i += step) {
+            total += (frame[i] & 0xFF);
+            count++;
         }
-        double avg = (double) sum / (frameData.length / step);
-        double diff = Math.abs(avg - lastFrameDiff);
-        return diff;
+        return (double) total / count;
     }
 
     private void takePicture() {
@@ -160,12 +164,12 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         cropped.compress(Bitmap.CompressFormat.JPEG, 100, baos);
-        byte[] finalBytes = baos.toByteArray();
+        byte[] bytes = baos.toByteArray();
 
         bmp.recycle();
         cropped.recycle();
 
-        return Base64.encodeToString(finalBytes, Base64.NO_WRAP);
+        return Base64.encodeToString(bytes, Base64.NO_WRAP);
     }
 
     private synchronized void finishSafe() {
@@ -199,7 +203,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
         public OverlayView(Activity ctx) {
             super(ctx);
             paint = new Paint();
-            paint.setColor(Color.parseColor("#80000000")); // 50% black
+            paint.setColor(Color.parseColor("#80000000"));
             paint.setStyle(Paint.Style.FILL);
         }
 
@@ -210,7 +214,6 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
             int w = canvas.getWidth();
             int h = canvas.getHeight();
 
-            // Transparent center rectangle (60%x40%)
             int rectW = (int) (w * 0.6);
             int rectH = (int) (h * 0.4);
             int left = (w - rectW) / 2;
@@ -218,15 +221,12 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
             int right = left + rectW;
             int bottom = top + rectH;
 
-            // Darken screen
             canvas.drawRect(0, 0, w, h, paint);
 
-            // Clear center area
             Paint clearPaint = new Paint();
             clearPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
             canvas.drawRect(left, top, right, bottom, clearPaint);
 
-            // White border
             Paint border = new Paint();
             border.setColor(Color.WHITE);
             border.setStrokeWidth(4);
