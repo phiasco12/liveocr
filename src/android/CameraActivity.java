@@ -72,7 +72,6 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
 
     @Override
     public void onPreviewFrame(byte[] data, Camera camera) {
-        Camera.Size size = camera.getParameters().getPreviewSize();
         Bitmap bmp = decodeToBitmap(data);
         if (bmp == null) return;
 
@@ -114,8 +113,16 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
 
     private Bitmap decodeToBitmap(byte[] data) {
         try {
-            return BitmapFactory.decodeByteArray(data, 0, data.length);
+            if (camera == null) return null;
+            Camera.Size size = camera.getParameters().getPreviewSize();
+            android.graphics.YuvImage yuv = new android.graphics.YuvImage(data,
+                    android.graphics.ImageFormat.NV21, size.width, size.height, null);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            yuv.compressToJpeg(new android.graphics.Rect(0, 0, size.width, size.height), 80, out);
+            byte[] jpegData = out.toByteArray();
+            return BitmapFactory.decodeByteArray(jpegData, 0, jpegData.length);
         } catch (Exception e) {
+            e.printStackTrace();
             return null;
         }
     }
