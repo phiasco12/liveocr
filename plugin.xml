@@ -14,4 +14,3 @@
   <source-file src="src/android/StableCamera.java" target-dir="src" />
   <source-file src="src/android/CameraActivity.java" target-dir="src" />
 </platform>
-
