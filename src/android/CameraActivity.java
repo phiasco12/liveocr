@@ -63,7 +63,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
             camera = Camera.open();
             Camera.Parameters params = camera.getParameters();
 
-            // Highest supported picture size
+            // Highest supported photo size
             Camera.Size best = null;
             for (Camera.Size s : params.getSupportedPictureSizes()) {
                 if (best == null || (s.width * s.height > best.width * best.height)) {
@@ -72,19 +72,26 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
             }
             if (best != null) params.setPictureSize(best.width, best.height);
 
+            // Continuous focus for sharpness
             if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
                 params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             } else if (params.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_AUTO)) {
                 params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
             }
 
+            // Lock auto exposure to stabilize brightness
+            if (params.isAutoExposureLockSupported()) {
+                params.setAutoExposureLock(false);
+            }
+
+            params.setJpegQuality(100);
             camera.setParameters(params);
             camera.setDisplayOrientation(90);
             camera.setPreviewDisplay(holder);
             camera.startPreview();
 
-            // Delay autofocus and capture slightly
-            handler.postDelayed(this::autoFocusAndCapture, 1000);
+            // Wait longer to let exposure + focus stabilize
+            handler.postDelayed(this::captureAfterFocus, 2500);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -92,10 +99,16 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
 
-    private void autoFocusAndCapture() {
+    private void captureAfterFocus() {
         if (camera == null || pictureTaken) return;
         try {
-            camera.autoFocus((success, cam) -> takePicture());
+            camera.autoFocus((success, cam) -> {
+                if (success) {
+                    handler.postDelayed(this::takePicture, 500); // small delay after focus
+                } else {
+                    takePicture();
+                }
+            });
         } catch (Exception e) {
             takePicture();
         }
@@ -117,9 +130,10 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     private String encodeToBase64(byte[] jpegData) {
+        // Decode at full size (no scaling)
         Bitmap bmp = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.length);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        bmp.compress(Bitmap.CompressFormat.JPEG, 95, baos);
+        bmp.compress(Bitmap.CompressFormat.JPEG, 100, baos);
         byte[] finalBytes = baos.toByteArray();
         return Base64.encodeToString(finalBytes, Base64.NO_WRAP);
     }
@@ -127,7 +141,6 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback {
     private synchronized void finishSafe() {
         if (finishing) return;
         finishing = true;
-
         runOnUiThread(() -> {
             try {
                 if (camera != null) {
