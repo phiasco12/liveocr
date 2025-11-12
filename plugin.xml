@@ -5,7 +5,7 @@
   <name>StableCamera</name>
   <description>Cordova Plugin for stable camera frame detection</description>
   <license>Apache 2.0</license>
-  <keywords>cordova, plugin, camera, stable, frames</keywords>
+  <keywords>cordova, plugin, camera, stable</keywords>
   <engine name="cordova" version=">=9.0.0" />
 
   <js-module src="www/stablecamera.js" name="StableCamera">
@@ -18,14 +18,14 @@
       <uses-permission android:name="android.permission.CAMERA" />
     </config-file>
 
-    <!-- expose native class to Cordova -->
+    <!-- register feature for Cordova -->
     <config-file target="res/xml/config.xml" parent="/*">
       <feature name="StableCamera">
         <param name="android-package" value="com.example.stablecamera.StableCamera" />
       </feature>
     </config-file>
 
-    <!-- register activity -->
+    <!-- register camera activity -->
     <config-file target="AndroidManifest.xml" parent="/manifest/application">
       <activity
         android:name="com.example.stablecamera.CameraActivity"
@@ -34,11 +34,10 @@
         android:screenOrientation="portrait" />
     </config-file>
 
-    <!-- source files -->
-    <source-file src="src/android/com/example/stablecamera/StableCamera.java"
-                 target-dir="src/com/example/stablecamera" />
-    <source-file src="src/android/com/example/stablecamera/CameraActivity.java"
-                 target-dir="src/com/example/stablecamera" />
+    <!-- ✅ Correct path mapping -->
+    <source-file src="src/android/StableCamera.java" target-dir="src/com/example/stablecamera" />
+    <source-file src="src/android/CameraActivity.java" target-dir="src/com/example/stablecamera" />
+
   </platform>
 
 </plugin>
