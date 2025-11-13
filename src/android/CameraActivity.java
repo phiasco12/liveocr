@@ -33,8 +33,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback, 
     private static final int REQUEST_CAMERA = 1001;
 
     // --- adjustable stillness settings ---
-    private static final double STABILITY_THRESHOLD = 2.0; // lower = more sensitive to movement
-    private static final long STABLE_HOLD_MS = 800;        // how long to hold still before capture
+    private static final double STABILITY_THRESHOLD = 1.0; // lower = more sensitive to movement
+    private static final long STABLE_HOLD_MS = 1500;        // how long to hold still before capture
 
     private Camera camera;
     private SurfaceView surfaceView;
